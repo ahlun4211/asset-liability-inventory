@@ -2,57 +2,58 @@ from google.adk.agents import Agent
 import vertexai
 import os
 
-vertexai.init(
-    project=os.environ["GOOGLE_CLOUD_PROJECT"],
-    location=os.environ["GOOGLE_CLOUD_LOCATION"],
-)
+from .tools.firestore_tools import FirestoreTools
+from .tools.user_tools import UserTools
 
-def get_weather(city: str) -> dict:
-    """
-    Returns weather information for a given city.
+# We are using custom PROJECT_ID instead of GOOGLE_CLOUD_PROJECT because 
+# this values defaults to the PROJECT NUMBER in Vertex Agent Engine and
+# causes issues with finding the database.
+PROJECT_ID = os.environ["PROJECT_ID"]
+LOCATION = os.environ["GOOGLE_CLOUD_LOCATION"]
+# Define your Firestore database name
+FIRESTORE_DATABASE = "inventory"
 
-    This is a TOOL that the agent can call when users ask about weather.
-    In production, this would call a real weather API (e.g., OpenWeatherMap).
-    For this demo, we use mock data.
+vertexai.init(project=PROJECT_ID, location=LOCATION)
 
-    Args:
-        city: Name of the city (e.g., "Tokyo", "New York")
-
-    Returns:
-        dict: Dictionary with status and weather report or error message
-    """
-    # Mock weather database with structured responses
-    weather_data = {
-        "san francisco": {"status": "success", "report": "The weather in San Francisco is sunny with a temperature of 72°F (22°C)."},
-        "new york": {"status": "success", "report": "The weather in New York is cloudy with a temperature of 65°F (18°C)."},
-        "london": {"status": "success", "report": "The weather in London is rainy with a temperature of 58°F (14°C)."},
-        "tokyo": {"status": "success", "report": "The weather in Tokyo is clear with a temperature of 70°F (21°C)."},
-        "paris": {"status": "success", "report": "The weather in Paris is partly cloudy with a temperature of 68°F (20°C)."}
-    }
-
-    city_lower = city.lower()
-    if city_lower in weather_data:
-        return weather_data[city_lower]
-    else:
-        available_cities = ", ".join([c.title() for c in weather_data.keys()])
-        return {
-            "status": "error",
-            "error_message": f"Weather information for '{city}' is not available. Try: {available_cities}"
-        }
-
+# Initialize your custom tool classes
+firestore_tools = FirestoreTools(project_id=PROJECT_ID, database=FIRESTORE_DATABASE)
+user_tools = UserTools()
+ 
 root_agent = Agent(
-    name="weather_assistant",
-    model="gemini-2.5-flash-lite",  # Fast, cost-effective Gemini model
-    description="A helpful weather assistant that provides weather information for cities.",
-    instruction="""
-    You are a friendly weather assistant. When users ask about the weather:
+    name="root_agent",
+    model="gemini-2.5-pro",
+    description="A master agent that manages a user's inventory, identifies items, and finds their value.",
+    instruction=f"""You are a master inventory management assistant. You can manage a user's inventory, identify new items, and find their market value by delegating to specialized agents.
 
-    1. Identify the city name from their question
-    2. Use the get_weather tool to fetch current weather information
-    3. Respond in a friendly, conversational tone
-    4. If the city isn't available, suggest one of the available cities
+**Core Rules:**
+1.  **Assume Current User Context**: Unless the user is an 'admin', all operations apply ONLY to the current user's data. Your tools will handle this automatically.
+2.  **Admin Exception**: If the user identifies as an 'admin', you are permitted to ask for a `user_id` to perform operations on another user's behalf.
+3.  **Path Autonomy**: You are responsible for figuring out the correct `collection_id`. Do not ask the user for the full path.
+4.  **User ID Changes**: If a user asks to change or set their user ID, use the `set_user_id` tool.
 
-    Be helpful and concise in your responses.
-    """,
-    tools=[get_weather]
+**Your Thought Process:**
+1.  **Identify the User's Goal and Delegate**:
+    - If the user wants to **add a new DVD to their inventory**, you must follow this specific workflow:
+        1.  First, delegate to the `identifier_agent` to get the item's details (title, UPC, condition, Amazon URL).
+        2.  Next, take the title and UPC from the result and delegate to the `value_agent` to find its market value.
+        3.  Finally, combine all the collected information (title, UPC, condition, value, etc.) and use your `add_document` tool to save the complete record to the database.
+    - If the user *only* wants to **identify a DVD**, delegate to the `identifier_agent`.
+    - If the user *only* wants to know the **value of a DVD**, delegate to the `value_agent`.
+    - For all other inventory management tasks (add, update, get, delete, query, list), handle them yourself using your database tools.
+
+**When handling tasks yourself:**
+- **Find Before Acting**: If you need to **delete** or **update** an item based on its name or title, you **MUST** first use the `find_document_by_field` tool to get its `document_id`.
+- **Execute the Correct Tool**: Call the appropriate tool with the `collection_id` and other necessary data.
+
+DATABASE STRUCTURE:
+- All operations **MUST** be performed on the database named '{FIRESTORE_DATABASE}'.
+- The root collection is named 'users'.
+- Each document in 'users' is identified by a `userId`.
+- Under each user, there are subcollections for inventory categories (e.g., 'dvd', 'figures').
+""",
+    # sub_agents=[identifier_agent, value_agent],
+    tools=(
+        firestore_tools.get_tools() +
+        user_tools.get_tools()
+    ),
 )
