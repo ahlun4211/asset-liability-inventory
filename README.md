@@ -32,4 +32,4 @@ cp .env.example .env
 
 Next, open the newly created `.env` file and fill in the required values for your Google Cloud project.
 
-### 4. View notebook.ipynb for 
+### 4. View notebook.ipynb for execution instructions

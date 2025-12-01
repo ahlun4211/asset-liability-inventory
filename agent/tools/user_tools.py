@@ -13,11 +13,20 @@
 # limitations under the License.
 
 from google.adk.tools import ToolContext
-from typing import Callable
+from typing import Callable, Optional
 
 
 class UserTools:
     """A class that provides tools for managing user context."""
+
+    def __init__(self, user_id: Optional[str] = None):
+        """
+        Initializes the UserTools.
+
+        Args:
+            user_id: The default user ID to use for operations.
+        """
+        self.user_id = user_id
 
     def get_current_user_id(self, tool_context: ToolContext) -> dict[str, str]:
         """
@@ -29,7 +38,7 @@ class UserTools:
         Returns:
             A dictionary containing the user ID or an error if not found.
         """
-        user_id = tool_context.state.get("user_id") or "1"
+        user_id = tool_context.state.get("user_id") or self.user_id or "1"
         return {"user_id": user_id}
 
     def set_user_id(self, new_user_id: str, tool_context: ToolContext) -> str:
