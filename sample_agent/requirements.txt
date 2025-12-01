@@ -1,2 +1,0 @@
-google-adk
-opentelemetry-instrumentation-google-genai

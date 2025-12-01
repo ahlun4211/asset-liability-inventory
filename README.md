@@ -16,6 +16,7 @@ source .venv/bin/activate
 Install all the required Python packages from the `requirements.txt` file.
 
 ```bash
+cd agent
 pip install -r requirements.txt
 ```
 
@@ -30,3 +31,5 @@ cp .env.example .env
 ```
 
 Next, open the newly created `.env` file and fill in the required values for your Google Cloud project.
+
+### 4. View notebook.ipynb for 
